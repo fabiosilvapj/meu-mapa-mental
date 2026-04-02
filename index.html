@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MindFlow Workstation v7.1</title>
+    <title>MindFlow Workstation v7.2 - Estável</title>
     
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/regenerator-runtime/0.13.7/runtime.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-elixir/dist/mind-elixir.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -40,7 +41,6 @@
 
         .main-layout { display: flex; flex-grow: 1; position: relative; }
 
-        /* Barra lateral flutuante */
         .side-toolbar { 
             position: absolute; left: 20px; top: 20px; 
             background: var(--header-bg); border: 1px solid var(--border-color);
@@ -51,10 +51,8 @@
         .tool-btn { width: 40px; height: 40px; border-radius: 8px; border: none; background: transparent; color: var(--text-color); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
         .tool-btn:hover { background: var(--accent-color); color: white; }
 
-        /* Container do Mapa */
         #map { flex-grow: 1; width: 100%; height: 100%; }
 
-        /* Modais */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
         .modal-content { background: var(--header-bg); padding: 25px; border-radius: 15px; width: 400px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
         
@@ -81,12 +79,12 @@
 
     <div class="main-layout">
         <div class="side-toolbar">
-            <button class="tool-btn" onclick="mind.addChild()" title="Novo Filho (Tab)"><i class="fas fa-plus"></i></button>
-            <button class="tool-btn" onclick="mind.insertSibling()" title="Novo Irmão (Enter)"><i class="fas fa-arrows-left-right"></i></button>
-            <button class="tool-btn" onclick="mind.removeNode()" title="Deletar (Del)" style="color:#f87171"><i class="fas fa-trash"></i></button>
+            <button class="tool-btn" onclick="safeAction('addChild')" title="Novo Filho (Tab)"><i class="fas fa-plus"></i></button>
+            <button class="tool-btn" onclick="safeAction('insertSibling')" title="Novo Irmão (Enter)"><i class="fas fa-arrows-left-right"></i></button>
+            <button class="tool-btn" onclick="safeAction('removeNode')" title="Deletar (Del)" style="color:#f87171"><i class="fas fa-trash"></i></button>
             <div style="height:1px; background:var(--border-color); margin:5px 0;"></div>
             <button class="tool-btn" onclick="compartilharLink()" title="Compartilhar"><i class="fas fa-share-nodes"></i></button>
-            <button class="tool-btn" onclick="mind.initSide()" title="Centralizar"><i class="fas fa-arrows-to-dot"></i></button>
+            <button class="tool-btn" onclick="safeAction('initSide')" title="Centralizar"><i class="fas fa-arrows-to-dot"></i></button>
             <button class="tool-btn" onclick="limparTudo()" title="Reiniciar Mapa"><i class="fas fa-refresh"></i></button>
         </div>
         <div id="map"></div>
@@ -106,7 +104,16 @@
         let timeLeft = 25 * 60;
         let running = false;
 
-        // 1. Inicialização e Correção de Dados
+        // --- FUNÇÕES DE SEGURANÇA ---
+        function safeAction(actionName) {
+            if (mind && typeof mind[actionName] === 'function') {
+                mind[actionName]();
+            } else {
+                console.warn("Mapa não inicializado ou ação inválida.");
+            }
+        }
+
+        // --- INICIALIZAÇÃO ---
         function initApp() {
             const params = new URLSearchParams(window.location.search);
             const sharedData = params.get('map');
@@ -114,17 +121,16 @@
 
             if (sharedData) {
                 try {
-                    // Correção na decodificação de caracteres especiais (acentos/emojis)
                     const decoded = decodeURIComponent(escape(atob(sharedData)));
                     initialData = JSON.parse(decoded);
-                    // Limpa a URL após carregar para não sujar o histórico
                     window.history.replaceState({}, document.title, window.location.pathname);
-                } catch(e) { console.error("Falha ao carregar dados compartilhados", e); }
+                } catch(e) { console.error("Erro ao carregar link", e); }
             } else {
-                const saved = localStorage.getItem('mf_save_v7');
+                const saved = localStorage.getItem('mf_stable_v72');
                 if (saved) initialData = JSON.parse(saved);
             }
 
+            // Criando a instância
             mind = new MindElixir({
                 el: '#map',
                 direction: MindElixir.SIDE,
@@ -133,55 +139,50 @@
             });
             mind.init();
 
-            // Autosave em cada operação
             mind.bus.addListener('operation', () => {
-                localStorage.setItem('mf_save_v7', JSON.stringify(mind.getData()));
+                localStorage.setItem('mf_stable_v72', JSON.stringify(mind.getData()));
             });
         }
 
-        // 2. Exportação Funcional (PNG e PDF)
+        // --- EXPORTAÇÕES ---
         async function exportarPNG() {
-            // Mind-Elixir gera o mapa dentro de .map-canvas ou .map-container
             const target = document.querySelector('.map-container') || document.querySelector('#map');
-            const canvas = await html2canvas(target, {
-                backgroundColor: getComputedStyle(document.body).getPropertyValue('--bg-color'),
-                useCORS: true,
-                scale: 2
-            });
-            const link = document.createElement('a');
-            link.download = `mapa_${Date.now()}.png`;
-            link.href = canvas.toDataURL();
-            link.click();
+            try {
+                const canvas = await html2canvas(target, {
+                    backgroundColor: getComputedStyle(document.body).getPropertyValue('--bg-color').trim(),
+                    useCORS: true,
+                    scale: 2
+                });
+                const link = document.createElement('a');
+                link.download = `mapa_${Date.now()}.png`;
+                link.href = canvas.toDataURL();
+                link.click();
+            } catch (err) { console.error("Erro ao exportar PNG", err); }
         }
 
         async function exportarPDF() {
             const { jsPDF } = window.jspdf;
             const target = document.querySelector('.map-container') || document.querySelector('#map');
-            const canvas = await html2canvas(target, { scale: 2 });
-            const imgData = canvas.toDataURL('image/png');
-            
-            const pdf = new jsPDF('l', 'mm', 'a4');
-            const width = pdf.internal.pageSize.getWidth();
-            const height = (canvas.height * width) / canvas.width;
-            pdf.addImage(imgData, 'PNG', 0, 0, width, height);
-            pdf.save("mapa_mental.pdf");
+            try {
+                const canvas = await html2canvas(target, { scale: 2 });
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF('l', 'mm', 'a4');
+                const width = pdf.internal.pageSize.getWidth();
+                const height = (canvas.height * width) / canvas.width;
+                pdf.addImage(imgData, 'PNG', 0, 0, width, height);
+                pdf.save("mapa_mental.pdf");
+            } catch (err) { console.error("Erro ao exportar PDF", err); }
         }
 
-        // 3. Compartilhamento Seguro
+        // --- COMPARTILHAMENTO ---
         function compartilharLink() {
             const dataStr = JSON.stringify(mind.getData());
-            // Codificação robusta para URL
             const base64 = btoa(unescape(encodeURIComponent(dataStr)));
             const url = `${window.location.origin}${window.location.pathname}?map=${base64}`;
-            
-            abrirModal("Link de Compartilhamento", `
-                <p style="font-size:0.8rem">Copie o link abaixo para enviar sua cópia:</p>
-                <textarea readonly style="width:100%; height:70px; padding:5px; font-size:10px;">${url}</textarea>
-                <button class="action-btn" onclick="navigator.clipboard.writeText('${url}'); alert('Copiado!')">Copiar Link</button>
-            `);
+            abrirModal("Compartilhar", `<textarea readonly style="width:100%;height:70px;font-size:10px;">${url}</textarea><button class="action-btn" onclick="navigator.clipboard.writeText('${url}');alert('Copiado!')">Copiar Link</button>`);
         }
 
-        // 4. Timer Pomodoro Funcional
+        // --- POMODORO ---
         function toggleTimer() {
             const btn = document.getElementById('play-btn');
             if (running) {
@@ -189,14 +190,8 @@
                 btn.innerHTML = '<i class="fas fa-play"></i>';
             } else {
                 timer = setInterval(() => {
-                    if (timeLeft > 0) {
-                        timeLeft--;
-                        renderTimer();
-                    } else {
-                        clearInterval(timer);
-                        alert("Pomodoro Finalizado!");
-                        resetTimer();
-                    }
+                    if (timeLeft > 0) { timeLeft--; renderTimer(); }
+                    else { clearInterval(timer); alert("Pomodoro Finalizado!"); resetTimer(); }
                 }, 1000);
                 btn.innerHTML = '<i class="fas fa-pause"></i>';
             }
@@ -209,38 +204,28 @@
             document.getElementById('timer-display').innerText = `${m}:${s < 10 ? '0' + s : s}`;
         }
 
-        function resetTimer() {
-            clearInterval(timer);
-            timeLeft = 25 * 60;
-            running = false;
-            renderTimer();
-            document.getElementById('play-btn').innerHTML = '<i class="fas fa-play"></i>';
-        }
+        function resetTimer() { clearInterval(timer); timeLeft = 25 * 60; running = false; renderTimer(); document.getElementById('play-btn').innerHTML = '<i class="fas fa-play"></i>'; }
 
-        // 5. Interface
+        // --- UI ---
         function toggleTheme() {
             const current = document.body.getAttribute('data-theme');
             const target = current === 'light' ? 'dark' : 'light';
             document.body.setAttribute('data-theme', target);
-            mind.changeTheme(target === 'dark' ? MindElixir.DARK : MindElixir.LIGHT);
+            if (mind) mind.changeTheme(target === 'dark' ? MindElixir.DARK : MindElixir.LIGHT);
         }
 
-        function abrirModal(t, b) {
-            document.getElementById('modal-title').innerText = t;
-            document.getElementById('modal-body').innerHTML = b;
-            document.getElementById('modal').style.display = 'flex';
-        }
-
+        function abrirModal(t, b) { document.getElementById('modal-title').innerText = t; document.getElementById('modal-body').innerHTML = b; document.getElementById('modal').style.display = 'flex'; }
         function fecharModal() { document.getElementById('modal').style.display = 'none'; }
+        function limparTudo() { if(confirm("Deseja resetar o mapa?")) { mind.init(MindElixir.new('Novo Mapa')); localStorage.removeItem('mf_stable_v72'); } }
 
-        function limparTudo() {
-            if(confirm("Deseja apagar este mapa e começar do zero?")) {
-                mind.init(MindElixir.new('Novo Mapa'));
-                localStorage.removeItem('mf_save_v7');
+        // --- DISPARO INICIAL ---
+        window.onload = () => {
+            if (typeof MindElixir !== 'undefined') {
+                initApp();
+            } else {
+                alert("Erro: A biblioteca principal não carregou. Verifique sua conexão.");
             }
-        }
-
-        initApp();
+        };
     </script>
 </body>
 </html>
